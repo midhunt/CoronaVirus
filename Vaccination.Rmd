@@ -1,0 +1,107 @@
+---
+title: "Corona Virus Vaccination"
+author: "Midhun Thaduru"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    fontsize: 14pt
+    highlight: monochrome
+    number_sections: no
+    theme: cosmo
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+# Exploratory Data Analysis of Corona Virus Vaccination
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, 
+                      warning = FALSE, message = FALSE)
+
+# Loading the required libraries
+library(data.table)
+library(ggplot2)
+library(zoo)
+
+# Changing theme of ggplot to black n white
+theme_set(theme_bw(12))
+```
+
+## Vaccination Dataset
+
+The vaccination dataset is obtained from [Github](https://github.com/owid/covid-19-data). The description along with the dataset is also available on [Kaggle](https://www.kaggle.com/gpreda/covid-world-vaccination-progress).  
+```{r vaccination}
+
+VaccinationData <- fread(
+  paste0(
+    Sys.getenv("Git"), 
+    "/CoronaVirus/Datasets/country_vaccinations.csv")
+)
+
+VaccinationData[, source_website := NULL]
+
+setorder(VaccinationData, country, date)
+
+```
+
+* It will be assumed that the first day of each country will have 0 `total_vaccinations`, `people_vaccinated`, `people_fully_vaccinated`, `total_vaccinations_per_hundred`, `people_vaccinated_per_hundred`, `people_fully_vaccinated_per_hundred` and `daily_vaccinations_per_million` if the values are NA.  
+* It will also be assumed that if the above mentioned columns (except `daily_vaccinations_per_million`) have NAs in-between then there are no vaccinations done on those day and previous values are carried over.  
+
+```{r}
+
+VaccinationData[, c("total_vaccinations",
+                    "people_vaccinated",
+                    "people_fully_vaccinated",
+                    "total_vaccinations_per_hundred",
+                    "people_vaccinated_per_hundred",
+                    "people_fully_vaccinated_per_hundred",
+                    "daily_vaccinations_per_million") := lapply(.SD, 
+                                                                function(x){
+                                                                  replace(x, seq_along(x) == 1 & is.na(x), 0)
+                                                                }), by = "country",
+                .SDcols = c("total_vaccinations",
+                            "people_vaccinated",
+                            "people_fully_vaccinated",
+                            "total_vaccinations_per_hundred",
+                            "people_vaccinated_per_hundred",
+                            "people_fully_vaccinated_per_hundred",
+                            "daily_vaccinations_per_million")]
+
+VaccinationData[, c("total_vaccinations",
+                    "people_vaccinated",
+                    "people_fully_vaccinated",
+                    "total_vaccinations_per_hundred",
+                    "people_vaccinated_per_hundred",
+                    "people_fully_vaccinated_per_hundred") := lapply(.SD, 
+                                                                     function(x){
+                                                                       na.locf(x, na.rm=FALSE, fromLast=FALSE)
+                                                                     }), by = "country",
+                .SDcols = c("total_vaccinations",
+                            "people_vaccinated",
+                            "people_fully_vaccinated",
+                            "total_vaccinations_per_hundred",
+                            "people_vaccinated_per_hundred",
+                            "people_fully_vaccinated_per_hundred")]
+
+```
+
+```{r}
+
+VaccinationData[, vaccines_count := sapply(strsplit(vaccines, ", "), length)]
+
+LatestVaccinationStatus <- VaccinationData[, .SD[.N], by = "country"]
+
+write.csv(LatestVaccinationStatus,
+          paste0(Sys.getenv("Git"),
+                 "/CoronaVirus/Datasets/latest_vaccination_status.csv"),
+          row.names = F)
+
+write.csv(VaccinationData,
+          paste0(Sys.getenv("Git"),
+                 "/CoronaVirus/Datasets/cleaned_country_vacciation.csv"),
+          row.names = F)
+
+```
+
